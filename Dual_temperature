@@ -1,0 +1,15 @@
+#DS18b20#1
+tfile=open("/sys/bus/w1/devices/w1_bus_master1/28-03167103d8ff/w1_slave")
+ttext=tfile.read()
+tfile.close()
+temp=ttext.split("\n")[1].split(" ")[9]
+temperature=float(temp[2:])/1000
+print temperature
+
+#DS18b20#2
+tfile=open("/sys/bus/w1/devices/w1_bus_master1/28-0516707d0fff/w1_slave")
+ttext=tfile.read()
+tfile.close()
+temp=ttext.split("\n")[1].split(" ")[9]
+temperature=float(temp[2:])/1000
+print temperature   
