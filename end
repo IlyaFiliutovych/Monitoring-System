@@ -1,0 +1,192 @@
+import smbus
+import math
+import time
+import os
+import glob
+import MySQLdb
+
+db = MySQLdb.connect("localhost", "monitoring", "password", "monitoring")
+curs=db.cursor()
+
+from Adafruit_IO import Client
+
+aio = Client("ecc1a903fa7e4846a69ce09712ecb2fb")
+
+os.system('modprobe w1-gpio')
+os.system('modprobe w1-therm')
+
+# Power management registers
+power_mgmt_1 = 0x6b
+power_mgmt_2 = 0x6c
+
+base_dir1 = '/sys/bus/w1/devices/w1_bus_master1/'
+device_folder1 = glob.glob(base_dir1 + '28-03*')[0]
+device_file1 = device_folder1 + '/w1_slave'
+
+def read_temp_raw1():
+        f = open(device_file1, 'r')
+        lines = f.readlines()
+        f.close()
+        return lines
+
+def read_temp1():
+        lines = read_temp_raw1()
+        while lines[0].strip()[-3:] != 'YES':
+                time.sleep(0.2)
+                lines = read_temp_raw1()
+        equals_pos = lines[1].find('t=')
+        if equals_pos != -1:
+                temp_string = lines[1][equals_pos+2:]
+                temp_c = float(temp_string) / 1000.0
+                return temp_c
+
+
+
+base_dir2 = '/sys/bus/w1/devices/w1_bus_master1/'
+device_folder2 = glob.glob(base_dir2 + '28-05*')[0]
+device_file2 = device_folder2 + '/w1_slave'
+
+def read_temp_raw2():
+        f = open(device_file2, 'r')
+        lines = f.readlines()
+        f.close()
+        return lines
+
+def read_temp2():
+        lines = read_temp_raw2()
+        while lines[0].strip()[-3:] != 'YES':
+                time.sleep(0.2)
+                lines = read_temp_raw1()
+        equals_pos = lines[1].find('t=')
+        if equals_pos != -1:
+                temp_string = lines[1][equals_pos+2:]
+                temp_c = float(temp_string) / 1000.0
+                return temp_c
+
+
+ 
+def read_byte1(adr1, address):
+  return bus.read_byte_data(address, adr1)
+
+def read_word1(adr1, address):
+    high = bus.read_byte_data(address, adr1)
+    low = bus.read_byte_data(address, adr1+1)
+    val = (high << 8) + low
+    return val
+
+def read_word_2c1(adr1, address):
+     val = read_word1(adr1, address)
+     if (val >= 0x8000):
+       return -((65535 - val) + 1)
+     else:
+        return val
+    
+def dist1(a,b):
+  return math.sqrt((a*a)+(b*b))
+  
+
+def get_y_rotation1(x,y,z):
+    radians = math.atan2(x, dist1(y,z))
+    return -math.degrees(radians)
+
+def get_x_rotation1(x,y,z):
+    radians = math.atan2(y, dist1(x,z))
+    return math.degrees(radians)
+
+
+bus = smbus.SMBus(1) # or bus = smbus.SMBus(1) for Revision 2 boards
+address1 = 0x68    # This is the address value read via the i2cdetect command
+address2 = 0x69
+ 
+# Now wake the 6050 up as it starts in sleep mode
+bus.write_byte_data(address1, power_mgmt_1, 0)
+
+while True:
+ curs.execute ("""INSERT INTO monitoring1 values(CURRENT_DATE() , NOW(), 'Temperature1', Action_read_temp1)""")
+ curs.execute ("SELECT * FROM monitoring1")
+ curs.execute ("""INSERT INTO monitoring1 values(CURRENT_DATE() , NOW(), 'Temperature2', 'Action_read_temp2)""")
+ curs.execute ("SELECT * FROM monitoring1")
+ curs.execute ("""INSERT INTO monitoring1 values(CURRENT_DATE() , NOW(), 'vibr1', accel_xout1)""")
+ curs.execute ("SELECT * FROM monitoring1")
+ curs.execute ("""INSERT INTO monitoring1 values(CURRENT_DATE() , NOW(), 'vibr2', 'accel_xout2)""")
+ curs.execute ("SELECT * FROM monitoring1")
+
+ print ("---------")
+ print('Temperature1',read_temp1())
+ print ("---------")
+ print (" gyro data 1" )
+ print ("---------")
+ 
+ gyro_xout1 = read_word_2c1(0x43, address1)
+ gyro_yout1 = read_word_2c1(0x45, address1)
+ gyro_zout1 = read_word_2c1(0x47, address1)
+ 
+ print "1gyro_xout: ", gyro_xout1, " scaled: ", (gyro_xout1 / 131)
+ print "1gyro_yout: ", gyro_yout1, " scaled: ", (gyro_yout1 / 131)
+ print "1gyro_zout: ", gyro_zout1, " scaled: ", (gyro_zout1 / 131)
+
+ print
+ print ("accelerometer data1")
+ print ("------------------")
+ 
+ accel_xout1 = read_word_2c1(0x3b, address1)
+ accel_yout1 = read_word_2c1(0x3d, address1)
+
+ accel_zout1= read_word_2c1(0x3f, address1)
+ accel_xout1_scaled = accel_xout1/ 16384.0
+ accel_yout1_scaled = accel_yout1/ 16384.0
+ accel_zout1_scaled = accel_zout1/ 16384.0
+
+
+ 
+ print ("1accel_xout: ", accel_xout1, " scaled: ", accel_xout1_scaled)
+ print ("1accel_yout: ", accel_yout1, " scaled: ", accel_yout1_scaled)
+ print ("1accel_zout: ", accel_zout1, " scaled: ", accel_zout1_scaled)
+ 
+ print ("x 1rotation: " , get_x_rotation1(accel_xout1_scaled, accel_yout1_scaled, accel_zout1_scaled))
+ print ("y 1rotation: " , get_y_rotation1(accel_xout1_scaled, accel_yout1_scaled, accel_zout1_scaled))
+
+
+ bus.write_byte_data(address2, power_mgmt_1, 0)
+
+ print ("---------")
+ print('Temperature2',read_temp2())
+ print ("---------")
+ print (" gyro data 2" )
+ print ("---------")
+ 
+ gyro_xout2 = read_word_2c1(0x43, address2)
+ gyro_yout2 = read_word_2c1(0x45, address2)
+ gyro_zout2 = read_word_2c1(0x47, address2)
+ 
+ print "2gyro_xout: ", gyro_xout2, " scaled: ", (gyro_xout2 / 131)
+ print "2gyro_yout: ", gyro_yout2, " scaled: ", (gyro_yout2 / 131)
+ print "2gyro_zout: ", gyro_zout2, " scaled: ", (gyro_zout2 / 131)
+
+ print
+ print ("accelerometer data2")
+ print ("------------------")
+ 
+ accel_xout2 = read_word_2c1(0x3b, address2)
+ accel_yout2 = read_word_2c1(0x3d, address2)
+ accel_zout2= read_word_2c1(0x3f, address2)
+
+ accel_xout2_scaled = accel_xout2/ 16384.0
+ accel_yout2_scaled = accel_yout2/ 16384.0
+ accel_zout2_scaled = accel_zout2/ 16384.0
+
+
+ 
+ print ("2accel_xout: ", accel_xout2, " scaled: ", accel_xout2_scaled)
+ print ("2accel_yout: ", accel_yout2, " scaled: ", accel_yout2_scaled)
+ print ("2accel_zout: ", accel_zout2, " scaled: ", accel_zout2_scaled)
+ 
+ print ("x 2rotation: " , get_x_rotation1(accel_xout2_scaled, accel_yout2_scaled, accel_zout2_scaled))
+ print ("y 2rotation: " , get_y_rotation1(accel_xout2_scaled, accel_yout2_scaled, accel_zout2_scaled))
+
+
+ aio.send('StateX1', accel_xout1)
+ aio.send('StateX2', accel_xout2)
+ aio.send('Temperatura1', read_temp1())
+ aio.send('Temperatura2', read_temp2())
+time.sleep(0.5)  
